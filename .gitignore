@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Environment (APIキーは .env.local に保存し、Vercel には直接設定)
+.env
+.env.local
+.env*.local
+
+# Build / cache
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# Misc
+.DS_Store
+*.pem
+.vercel
