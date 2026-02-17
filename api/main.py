@@ -44,22 +44,63 @@ class EDINETClient:
         url = f"{BASE_URL}/{endpoint}"
         try:
             response = requests.get(url, headers=self.headers, params=params, timeout=30)
+            if response.status_code == 404:
+                raise HTTPException(
+                    status_code=404,
+                    detail="指定された企業コードはEDINETに存在しません。コードを確認するか、企業検索で有効なコードを取得してください。"
+                )
+            if response.status_code == 401:
+                raise HTTPException(
+                    status_code=503,
+                    detail="EDINET APIの認証に失敗しました。EDINET_API_KEY（APIキー）を確認してください。"
+                )
+            if response.status_code == 403:
+                raise HTTPException(
+                    status_code=503,
+                    detail="EDINET APIへのアクセスが拒否されました。APIキーの有効性または利用制限を確認してください。"
+                )
             response.raise_for_status()
             return response.json()
+        except HTTPException:
+            raise
         except requests.exceptions.RequestException as e:
             raise HTTPException(status_code=500, detail=f"API request failed: {str(e)}")
 
     def search_companies(self, query: str = None, per_page: int = 10, page: int = 1):
-        params = {"per_page": per_page, "page": page}
+        # EDINET DB API の企業検索は /search?q= を使用（/companies?query= は非対応）
         if query:
-            params["query"] = query
+            data = self._request("search", {"q": query})
+            # レスポンスは {"data": [{ name, sec_code, edinet_code, ... }]} 形式
+            raw_list = data.get("data") or data.get("companies") or []
+            companies = []
+            for c in raw_list:
+                companies.append({
+                    "edinet_code": c.get("edinet_code") or c.get("code", ""),
+                    "name": c.get("name", ""),
+                    "securities_code": c.get("securities_code") or c.get("sec_code") or "",
+                    "industry": c.get("industry") or c.get("sector") or "",
+                })
+            return {"companies": companies[:per_page]}
+        # キーワードなしの場合は企業一覧
+        params = {"per_page": per_page, "page": page}
         return self._request("companies", params)
 
     def get_company_info(self, company_code: str):
         return self._request(f"companies/{company_code}")
 
-    def get_financials(self, company_code: str):
-        return self._request(f"companies/{company_code}/financials")
+    def get_financials(self, company_code: str, years: Optional[int] = None):
+        """財務時系列を取得。years 指定時は直近 N 期に絞る（APIは全期間返す想定）。"""
+        data = self._request(f"companies/{company_code}/financials")
+        # EDINET API は "data" または "financials" で配列を返す
+        raw_list = data.get("data") or data.get("financials") or []
+        if years is not None and years > 0:
+            raw_list = raw_list[: int(years)]
+        # レスポンス形式を統一（キー financials で返す）
+        if "data" in data and "financials" not in data:
+            data = {"financials": raw_list, **{k: v for k, v in data.items() if k != "data"}}
+        else:
+            data["financials"] = raw_list
+        return data
 
     def get_ranking(self, metric: str, limit: int = 10, order: str = "desc"):
         params = {"limit": limit, "order": order}
@@ -107,6 +148,44 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api-status")
+async def api_status():
+    """
+    EDINET API との接続状態を確認します。
+    - status: サービス疎通
+    - api_key_ok: APIキーで検索が成功するか
+    """
+    result = {"status": "unknown", "api_key_ok": None, "detail": ""}
+    try:
+        # 認証不要のステータス確認（edinetdb.jp の仕様）
+        r = requests.get(f"{BASE_URL}/status", timeout=10)
+        result["status"] = "ok" if r.status_code == 200 else f"http_{r.status_code}"
+        if r.status_code == 200 and r.text:
+            try:
+                result["edinet_status"] = r.json()
+            except Exception:
+                pass
+    except requests.exceptions.RequestException as e:
+        result["status"] = "error"
+        result["detail"] = str(e)
+        return result
+
+    # APIキーで検索を1回試行
+    try:
+        data = client.search_companies("トヨタ", per_page=1)
+        result["api_key_ok"] = bool(data.get("companies"))
+        if not result["api_key_ok"] and result["status"] == "ok":
+            result["detail"] = "検索は成功しましたが0件でした。APIキーは有効な可能性があります。"
+    except HTTPException as e:
+        result["api_key_ok"] = False
+        result["detail"] = e.detail if hasattr(e, "detail") else str(e)
+    except Exception as e:
+        result["api_key_ok"] = False
+        result["detail"] = str(e)
+
+    return result
+
+
 @app.get("/companies")
 async def search_companies(
     query: Optional[str] = Query(None, description="検索キーワード（企業名）"),
@@ -133,20 +212,24 @@ async def get_company_info(company_code: str):
     try:
         return client.get_company_info(company_code)
     except HTTPException:
-        raise HTTPException(status_code=404, detail="Company not found")
+        raise
 
 
 @app.get("/companies/{company_code}/financials")
-async def get_financials(company_code: str):
+async def get_financials(
+    company_code: str,
+    years: Optional[int] = Query(None, description="表示する直近の期数（例: 5 → 直近5期）。省略時はAPIの全期間"),
+):
     """
     企業の財務データを取得
 
     - **company_code**: 企業コード（例: E02367）
+    - **years**: 対象範囲（直近何期分か）。指定しない場合はAPIが返す全期間
     """
     try:
-        return client.get_financials(company_code)
+        return client.get_financials(company_code, years=years)
     except HTTPException:
-        raise HTTPException(status_code=404, detail="Financial data not found")
+        raise
 
 
 @app.get("/rankings/{metric}")
@@ -174,12 +257,14 @@ async def get_ranking(
 
 @app.get("/compare")
 async def compare_companies(
-    codes: str = Query(..., description="企業コード（カンマ区切り、例: E02367,E01825,E02503）")
+    codes: str = Query(..., description="企業コード（カンマ区切り、例: E02367,E01825,E02503）"),
+    years: Optional[int] = Query(None, description="対象範囲（直近何期）。省略時はAPIの全期間"),
 ):
     """
     複数企業の財務データを比較
 
     - **codes**: 企業コード（カンマ区切り、例: E02367,E01825,E02503）
+    - **years**: 対象範囲（直近何期）
     """
     company_codes = [code.strip() for code in codes.split(",")]
 
@@ -201,7 +286,7 @@ async def compare_companies(
     for code in company_codes:
         try:
             info = client.get_company_info(code)
-            financials = client.get_financials(code)
+            financials = client.get_financials(code, years=years)
             results.append({
                 "code": code,
                 "name": info.get("name"),
@@ -221,15 +306,19 @@ async def compare_companies(
 
 
 @app.get("/companies/{company_code}/analysis")
-async def get_company_analysis(company_code: str):
+async def get_company_analysis(
+    company_code: str,
+    years: Optional[int] = Query(None, description="対象範囲（直近何期）。省略時はAPIの全期間から直近を使用"),
+):
     """
     企業の財務分析サマリー
 
     - **company_code**: 企業コード（例: E02367）
+    - **years**: 対象範囲（直近何期）。指定時はその範囲の直近1期で分析
     """
     try:
         info = client.get_company_info(company_code)
-        financials = client.get_financials(company_code)
+        financials = client.get_financials(company_code, years=years)
 
         if not financials.get("financials"):
             raise HTTPException(status_code=404, detail="No financial data available")

@@ -58,6 +58,9 @@ GET /redoc         - ReDoc（美しいドキュメント）
 
 ### 企業検索
 
+- **検索内容**: 入力した文字列（例: トヨタ）は **企業名** として EDINET API の `GET /v1/search?q=` にそのまま渡されます。企業の一覧が返ります。
+- **対象年・対象範囲**: 検索APIには年度や範囲のパラメータはありません（「どの企業か」を特定するだけです）。財務データの **対象範囲** は後述の `years` で指定します。
+
 ```bash
 # 企業を検索
 GET /companies?query=任天堂&per_page=10&page=1
@@ -92,11 +95,16 @@ curl "https://your-api.com/companies/E02367"
 
 ### 財務データ
 
+- **対象範囲（対象年）**: クエリ `years` を付けると、APIが返す時系列のうち **直近 N 期** だけに絞って返します。省略時はAPIの全期間です。
+
 ```bash
 # 企業の財務データを取得
-GET /companies/{company_code}/financials
+GET /companies/{company_code}/financials?years=5
 
-# 例
+# 例（直近5期）
+curl "https://your-api.com/companies/E02367/financials?years=5"
+
+# 例（全期間）
 curl "https://your-api.com/companies/E02367/financials"
 ```
 

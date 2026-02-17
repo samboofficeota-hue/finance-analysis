@@ -38,9 +38,12 @@
     }
     .panel.active { display: block; }
     .panel h2 { font-size: 1.1rem; margin: 0 0 1rem 0; color: #333; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
-    .form-row { margin-bottom: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-    .form-row label { min-width: 6em; }
-    .form-row input, .form-row select { padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; }
+    .form-row { margin-bottom: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
+    .form-row label { min-width: 7em; font-weight: 500; color: #444; }
+    .form-row input[type="text"], .form-row select, .form-row textarea { padding: 0.5rem 0.75rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.95rem; }
+    .form-row input[type="text"]:focus, .form-row select:focus, .form-row textarea:focus { outline: none; border-color: #0d47a1; box-shadow: 0 0 0 2px rgba(13,71,161,0.15); }
+    .form-row input[type="text"].input-code { width: 8rem; }
+    .form-row input[type="text"].input-query { min-width: 12rem; }
     button {
       padding: 0.5rem 1rem;
       background: #0d47a1;
@@ -63,12 +66,15 @@
     .btn-csv { margin-left: 0.5rem; }
     .comparison-table th { vertical-align: top; }
     .comparison-table td { vertical-align: top; }
-    textarea { width: 100%; max-width: 400px; min-height: 60px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; }
+    textarea { width: 100%; max-width: 420px; min-height: 72px; padding: 0.5rem 0.75rem; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; font-size: 0.95rem; resize: vertical; }
+    textarea:focus { outline: none; border-color: #0d47a1; box-shadow: 0 0 0 2px rgba(13,71,161,0.15); }
+    .form-hint { font-size: 0.8rem; color: #666; margin-top: 0.25rem; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>EDINET DB 財務分析</h1>
+    <p style="margin:0 0 0.5rem 0; font-size:0.85rem;"><a href="/api-status" target="_blank">API接続状態を確認</a></p>
     <nav>
       <a href="#search" data-panel="search" class="active">企業検索・基本情報</a>
       <a href="#analysis" data-panel="analysis">財務指標の分析</a>
@@ -81,87 +87,99 @@
     <div id="panel-search" class="panel active">
       <h2>企業検索・基本情報取得</h2>
       <div class="form-row">
-        <label>企業名</label>
-        <input type="text" id="search-query" placeholder="例: 任天堂" />
-        <label>件数</label>
-        <select id="search-per-page"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select>
+        <label for="search-query">検索キーワード（企業名）</label>
+        <input type="text" id="search-query" class="input-query" placeholder="例: トヨタ、任天堂" aria-label="企業名で検索" />
+        <label for="search-per-page">表示件数</label>
+        <select id="search-per-page" aria-label="表示件数"><option value="10">10件</option><option value="20">20件</option><option value="50">50件</option></select>
         <button type="button" id="btn-search">検索</button>
       </div>
       <div id="out-search" class="out">
-        <span class="empty">企業名を入力して検索してください。</span>
+        <span class="empty">企業名を入力して検索してください。検索結果の企業コードは「企業コードで詳細」や他タブで利用できます。</span>
       </div>
       <div class="form-row" style="margin-top:1rem;">
-        <label>企業コードで詳細</label>
-        <input type="text" id="detail-code" placeholder="例: E02367" />
+        <label for="detail-code">企業コードで詳細</label>
+        <input type="text" id="detail-code" class="input-code" placeholder="例: E02144（トヨタ）" aria-label="企業コード" />
         <button type="button" id="btn-detail">詳細表示</button>
       </div>
       <div id="out-detail" class="out"></div>
-      <button type="button" id="btn-csv-search" class="btn-csv secondary" style="display:none;">検索結果をCSV保存</button>
+      <button type="button" id="btn-csv-detail" class="btn-csv secondary" style="display:none;">この1社をCSVでダウンロード</button>
     </div>
 
     <!-- 2. 財務指標の分析 -->
     <div id="panel-analysis" class="panel">
       <h2>財務指標の分析</h2>
       <div class="form-row">
-        <label>企業コード</label>
-        <input type="text" id="analysis-code" placeholder="例: E02367" />
+        <label for="analysis-code">企業コード</label>
+        <input type="text" id="analysis-code" class="input-code" placeholder="例: E02144（トヨタ自動車）" aria-label="企業コード" />
+        <label for="analysis-years">対象範囲</label>
+        <select id="analysis-years" aria-label="対象期間">
+          <option value="">全期間</option>
+          <option value="3">直近3期</option>
+          <option value="5" selected>直近5期</option>
+          <option value="6">直近6期</option>
+        </select>
         <button type="button" id="btn-analysis">分析表示</button>
       </div>
+      <p class="form-hint">企業コードは「企業検索」で取得したEDINETコード（Eで始まる）を入力します。</p>
       <div id="out-analysis" class="out">
         <span class="empty">企業コードを入力して分析を表示します。</span>
       </div>
-      <button type="button" id="btn-csv-analysis" class="btn-csv secondary" style="display:none;">分析結果をCSV保存</button>
+      <button type="button" id="btn-csv-analysis" class="btn-csv secondary" style="display:none;">この1社をCSVでダウンロード</button>
     </div>
 
     <!-- 3. ランキング -->
     <div id="panel-ranking" class="panel">
       <h2>ランキング機能</h2>
       <div class="form-row">
-        <label>指標</label>
-        <select id="rank-metric">
+        <label for="rank-metric">指標</label>
+        <select id="rank-metric" aria-label="ランキング指標">
           <option value="roe">ROE（自己資本利益率）</option>
           <option value="roa">ROA（総資産利益率）</option>
           <option value="sales">売上高</option>
           <option value="market_cap">時価総額</option>
           <option value="operating_income">営業利益</option>
         </select>
-        <label>件数</label>
-        <select id="rank-limit"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select>
-        <label>並び順</label>
-        <select id="rank-order"><option value="desc">降順</option><option value="asc">昇順</option></select>
+        <label for="rank-limit">表示件数</label>
+        <select id="rank-limit" aria-label="表示件数"><option value="10">10件</option><option value="20">20件</option><option value="50">50件</option></select>
+        <label for="rank-order">並び順</label>
+        <select id="rank-order" aria-label="並び順"><option value="desc">降順</option><option value="asc">昇順</option></select>
         <button type="button" id="btn-ranking">取得</button>
       </div>
       <div id="out-ranking" class="out">
-        <span class="empty">指標を選んで取得してください。</span>
+        <span class="empty">指標を選んで「取得」をクリックしてください。</span>
       </div>
-      <button type="button" id="btn-csv-ranking" class="btn-csv secondary" style="display:none;">ランキングをCSV保存</button>
     </div>
 
     <!-- 4. 複数企業の比較 -->
     <div id="panel-compare" class="panel">
       <h2>複数企業の比較</h2>
       <div class="form-row">
-        <label>企業コード</label>
-        <textarea id="compare-codes" placeholder="カンマ区切りで2〜10件（例: E02367, E01825, E02503）"></textarea>
+        <label for="compare-codes">企業コード（2〜10件）</label>
+        <textarea id="compare-codes" placeholder="例: E02144, E02367, E01825（カンマまたは改行で区切り）" aria-label="比較する企業コード"></textarea>
       </div>
       <div class="form-row">
+        <label for="compare-years">対象範囲</label>
+        <select id="compare-years" aria-label="対象期間">
+          <option value="">全期間</option>
+          <option value="3">直近3期</option>
+          <option value="5" selected>直近5期</option>
+          <option value="6">直近6期</option>
+        </select>
         <button type="button" id="btn-compare">比較する</button>
       </div>
+      <p class="form-hint">企業検索で取得したEDINETコードを、カンマまたは改行で区切って入力します。</p>
       <div id="out-compare" class="out">
-        <span class="empty">企業コードをカンマ区切りで入力してください。</span>
+        <span class="empty">企業コードを2件以上入力して「比較する」をクリックしてください。</span>
       </div>
-      <button type="button" id="btn-csv-compare" class="btn-csv secondary" style="display:none;">比較結果をCSV保存</button>
     </div>
 
     <!-- 5. CSVエクスポート説明 -->
     <div id="panel-export" class="panel">
       <h2>CSVエクスポート</h2>
-      <p>各機能の結果表示エリアの下にある「CSV保存」ボタンで、表示中の結果をCSVファイルとして保存できます。</p>
+      <p>現時点では<strong>1社ごと</strong>のCSVダウンロードに対応しています。</p>
       <ul>
-        <li>企業検索 → 検索結果をCSV保存</li>
-        <li>財務指標の分析 → 分析結果をCSV保存</li>
-        <li>ランキング → ランキングをCSV保存</li>
-        <li>複数企業の比較 → 比較結果をCSV保存</li>
+        <li><strong>企業検索・基本情報</strong> … 企業コードで詳細を表示したあと、「この1社をCSVでダウンロード」で基本情報をCSV保存</li>
+        <li><strong>財務指標の分析</strong> … 分析表示したあと、「この1社をCSVでダウンロード」で分析結果をCSV保存</li>
       </ul>
     </div>
   </div>
@@ -233,8 +251,8 @@
       lastSearchData = data;
       const list = data.companies || [];
       if (list.length === 0) {
-        out.innerHTML = '<span class="empty">該当する企業がありません。</span>';
-        showCsvBtn('btn-csv-search', false);
+        out.innerHTML = '<span class="empty">該当する企業がありません。</span>' +
+          '<p style="margin-top:0.75rem; font-size:0.9rem;">API連携を確認するには <a href="/api-status" target="_blank">接続状態</a> を開いてください。</p>';
         return;
       }
       let table = '<table><thead><tr><th>EDINETコード</th><th>企業名</th><th>証券コード</th><th>業種</th></tr></thead><tbody>';
@@ -243,30 +261,51 @@
       });
       table += '</tbody></table>';
       out.innerHTML = table;
-      showCsvBtn('btn-csv-search', true);
     } catch (e) {
-      out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>';
-      showCsvBtn('btn-csv-search', false);
+      out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>' +
+        '<p style="margin-top:0.75rem; font-size:0.9rem;"><a href="/api-status" target="_blank">API接続状態</a>でキーと疎通を確認できます。</p>';
     }
   });
 
+  let lastDetailData = null;
   el('btn-detail').addEventListener('click', async function() {
     const code = el('detail-code').value.trim().toUpperCase().replace(/^E?/,'E');
     if (!code) return;
     const out = el('out-detail');
     out.innerHTML = '<span>取得中...</span>';
+    el('btn-csv-detail').style.display = 'none';
     try {
       const data = await get('/companies/' + encodeURIComponent(code));
+      lastDetailData = data;
       out.innerHTML = '<pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
+      el('btn-csv-detail').style.display = 'inline-block';
     } catch (e) {
       out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>';
+      lastDetailData = null;
     }
   });
 
-  el('btn-csv-search').addEventListener('click', function() {
-    const table = el('out-search').querySelector('table');
-    if (!table) return;
-    downloadCsv('companies_search.csv', tableToCsv(table));
+  function objectToCsvRows(obj, prefix) {
+    const rows = [];
+    prefix = prefix || '';
+    for (const key in obj) {
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+      const v = obj[key];
+      const label = prefix ? prefix + '.' + key : key;
+      if (v !== null && typeof v === 'object' && !Array.isArray(v) && typeof v !== 'number') {
+        rows.push(...objectToCsvRows(v, label));
+      } else {
+        rows.push([label, v == null ? '' : String(v)]);
+      }
+    }
+    return rows;
+  }
+  el('btn-csv-detail').addEventListener('click', function() {
+    if (!lastDetailData) return;
+    const rows = objectToCsvRows(lastDetailData);
+    const csv = '項目,値\n' + rows.map(r => '"' + String(r[0]).replace(/"/g,'""') + '","' + String(r[1]).replace(/"/g,'""') + '"').join('\n');
+    const code = (lastDetailData.edinet_code || lastDetailData.code || 'company').replace(/[^A-Za-z0-9_-]/g, '_');
+    downloadCsv('company_' + code + '.csv', csv);
   });
 
   // 2. 財務指標の分析
@@ -274,10 +313,12 @@
   el('btn-analysis').addEventListener('click', async function() {
     const code = el('analysis-code').value.trim().toUpperCase().replace(/^E?/,'E');
     if (!code) return;
+    const years = el('analysis-years').value;
     const out = el('out-analysis');
     out.innerHTML = '<span>取得中...</span>';
     try {
-      const data = await get('/companies/' + encodeURIComponent(code) + '/analysis');
+      const path = '/companies/' + encodeURIComponent(code) + '/analysis' + (years ? '?years=' + encodeURIComponent(years) : '');
+      const data = await get(path);
       lastAnalysisData = data;
       const c = data.company || {};
       const ind = data.indicators || {};
@@ -307,7 +348,8 @@
   el('btn-csv-analysis').addEventListener('click', function() {
     const table = el('out-analysis').querySelector('table');
     if (!table) return;
-    downloadCsv('analysis.csv', tableToCsv(table));
+    const code = (el('analysis-code').value.trim().toUpperCase().replace(/^E?/,'E') || 'company').replace(/[^A-Za-z0-9_-]/g, '_');
+    downloadCsv('company_analysis_' + code + '.csv', tableToCsv(table));
   });
 
   // 3. ランキング
@@ -324,7 +366,6 @@
       const list = data.rankings || data.data || [];
       if (list.length === 0) {
         out.innerHTML = '<span class="empty">データがありません。</span>';
-        showCsvBtn('btn-csv-ranking', false);
         return;
       }
       const keys = Object.keys(list[0]);
@@ -338,17 +379,9 @@
       });
       table += '</tbody></table>';
       out.innerHTML = table;
-      showCsvBtn('btn-csv-ranking', true);
     } catch (e) {
       out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>';
-      showCsvBtn('btn-csv-ranking', false);
     }
-  });
-
-  el('btn-csv-ranking').addEventListener('click', function() {
-    const table = el('out-ranking').querySelector('table');
-    if (!table) return;
-    downloadCsv('ranking.csv', tableToCsv(table));
   });
 
   // 4. 複数企業比較
@@ -364,16 +397,18 @@
       el('out-compare').innerHTML = '<span class="error">一度に比較できるのは10件までです。</span>';
       return;
     }
+    const years = el('compare-years').value;
     const out = el('out-compare');
     out.innerHTML = '<span>取得中...</span>';
     try {
-      const data = await get('/compare?codes=' + codes.map(c => encodeURIComponent(c)).join(','));
+      let path = '/compare?codes=' + codes.map(c => encodeURIComponent(c)).join(',');
+      if (years) path += '&years=' + encodeURIComponent(years);
+      const data = await get(path);
       lastCompareData = data;
       const success = data.success || [];
       const errors = data.errors || [];
       if (success.length === 0) {
         out.innerHTML = '<span class="error">取得できた企業がありません。</span><pre>' + escapeHtml(JSON.stringify(errors, null, 2)) + '</pre>';
-        showCsvBtn('btn-csv-compare', false);
         return;
       }
       const indicators = ['roe','roa','equity_ratio','net_sales','net_income','total_assets'];
@@ -411,17 +446,9 @@
       table += '</tbody></table>';
       if (errors.length) table += '<p class="error">一部エラー: ' + escapeHtml(JSON.stringify(errors)) + '</p>';
       out.innerHTML = table;
-      showCsvBtn('btn-csv-compare', true);
     } catch (e) {
       out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>';
-      showCsvBtn('btn-csv-compare', false);
     }
-  });
-
-  el('btn-csv-compare').addEventListener('click', function() {
-    const table = el('out-compare').querySelector('table');
-    if (!table) return;
-    downloadCsv('compare.csv', tableToCsv(table));
   });
 })();
   </script>

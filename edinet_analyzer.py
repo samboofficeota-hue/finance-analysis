@@ -38,7 +38,7 @@ class EDINETAnalyzer:
 
     def search_companies(self, query: str = None, per_page: int = 10, page: int = 1) -> List[Dict]:
         """
-        企業を検索
+        企業を検索（EDINET DB API: /search?q= を使用）
 
         Args:
             query: 検索キーワード（企業名）
@@ -48,10 +48,19 @@ class EDINETAnalyzer:
         Returns:
             企業情報のリスト
         """
-        params = {"per_page": per_page, "page": page}
         if query:
-            params["query"] = query
-
+            data = self._request("search", {"q": query})
+            raw = data.get("data") or data.get("companies") or []
+            return [
+                {
+                    "edinet_code": c.get("edinet_code") or c.get("code", ""),
+                    "name": c.get("name", ""),
+                    "securities_code": c.get("securities_code") or c.get("sec_code") or "",
+                    "industry": c.get("industry") or c.get("sector") or "",
+                }
+                for c in raw[:per_page]
+            ]
+        params = {"per_page": per_page, "page": page}
         data = self._request("companies", params)
         return data.get("companies", [])
 
