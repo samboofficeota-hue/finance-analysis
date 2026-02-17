@@ -324,41 +324,67 @@ async def get_company_analysis(
             raise HTTPException(status_code=404, detail="No financial data available")
 
         latest = financials["financials"][0]
+        # EDINET API は revenue / roe_official 等を使うため、net_sales / roe にマッピング
+        net_sales = latest.get("net_sales") or latest.get("revenue")
+        roe_val = latest.get("roe") if latest.get("roe") is not None else latest.get("roe_official")
+        roa_val = latest.get("roa")
+        equity_ratio_val = latest.get("equity_ratio") if latest.get("equity_ratio") is not None else latest.get("equity_ratio_official")
+        fiscal_year = latest.get("fiscal_year")
+        # 比率で返る場合（0.136 等）は百分率に変換
+        if roe_val is not None and abs(roe_val) < 3:
+            roe_val = roe_val * 100
+        if roa_val is not None and abs(roa_val) < 3:
+            roa_val = roa_val * 100
+        if equity_ratio_val is not None and abs(equity_ratio_val) < 3:
+            equity_ratio_val = equity_ratio_val * 100
 
-        # 簡易分析
+        info_data = (info.get("data") if isinstance(info.get("data"), dict) else {}) or info
         analysis = {
             "company": {
                 "code": company_code,
-                "name": info.get("name"),
-                "industry": info.get("industry"),
-                "securities_code": info.get("securities_code")
+                "name": info_data.get("name"),
+                "industry": info_data.get("industry"),
+                "securities_code": info_data.get("securities_code") or info_data.get("sec_code"),
             },
             "latest_period": {
-                "fiscal_period": latest.get("fiscal_period"),
-                "fiscal_year_end_date": latest.get("fiscal_year_end_date")
+                "fiscal_year": fiscal_year,
+                "fiscal_period": latest.get("fiscal_period") or (f"{fiscal_year}年" if fiscal_year else None),
+                "fiscal_year_end_date": latest.get("fiscal_year_end_date"),
             },
             "performance": {
-                "net_sales": latest.get("net_sales"),
+                "net_sales": net_sales,
+                "revenue": latest.get("revenue"),
                 "operating_income": latest.get("operating_income"),
                 "ordinary_income": latest.get("ordinary_income"),
-                "net_income": latest.get("net_income")
+                "net_income": latest.get("net_income"),
+                "comprehensive_income": latest.get("comprehensive_income"),
             },
             "balance": {
                 "total_assets": latest.get("total_assets"),
                 "net_assets": latest.get("net_assets"),
-                "equity": latest.get("equity")
+                "equity": latest.get("equity"),
+                "cash": latest.get("cash"),
+            },
+            "cash_flow": {
+                "cf_operating": latest.get("cf_operating"),
+                "cf_investing": latest.get("cf_investing"),
+                "cf_financing": latest.get("cf_financing"),
             },
             "indicators": {
-                "roe": latest.get("roe"),
-                "roa": latest.get("roa"),
-                "equity_ratio": latest.get("equity_ratio"),
-                "operating_margin": latest.get("operating_margin")
+                "roe": roe_val,
+                "roa": roa_val,
+                "equity_ratio": equity_ratio_val,
+                "operating_margin": latest.get("operating_margin"),
+                "eps": latest.get("eps"),
+                "bps": latest.get("bps"),
+                "per": latest.get("per"),
+                "payout_ratio": latest.get("payout_ratio"),
             },
             "ratings": {
-                "profitability": rate_profitability(latest.get("roe")),
-                "efficiency": rate_efficiency(latest.get("roa")),
-                "stability": rate_stability(latest.get("equity_ratio"))
-            }
+                "profitability": rate_profitability(roe_val),
+                "efficiency": rate_efficiency(roa_val),
+                "stability": rate_stability(equity_ratio_val),
+            },
         }
 
         return analysis
@@ -369,7 +395,7 @@ async def get_company_analysis(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def rate_profitability(roe: float) -> str:
+def rate_profitability(roe: Optional[float]) -> str:
     """収益性評価"""
     if roe is None:
         return "N/A"
@@ -383,7 +409,7 @@ def rate_profitability(roe: float) -> str:
         return "要改善"
 
 
-def rate_efficiency(roa: float) -> str:
+def rate_efficiency(roa: Optional[float]) -> str:
     """効率性評価"""
     if roa is None:
         return "N/A"
@@ -397,7 +423,7 @@ def rate_efficiency(roa: float) -> str:
         return "要改善"
 
 
-def rate_stability(equity_ratio: float) -> str:
+def rate_stability(equity_ratio: Optional[float]) -> str:
     """安全性評価"""
     if equity_ratio is None:
         return "N/A"

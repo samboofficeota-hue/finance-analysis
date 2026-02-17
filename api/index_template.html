@@ -285,27 +285,64 @@
     }
   });
 
-  function objectToCsvRows(obj, prefix) {
-    const rows = [];
-    prefix = prefix || '';
-    for (const key in obj) {
-      if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
-      const v = obj[key];
-      const label = prefix ? prefix + '.' + key : key;
-      if (v !== null && typeof v === 'object' && !Array.isArray(v) && typeof v !== 'number') {
-        rows.push(...objectToCsvRows(v, label));
-      } else {
-        rows.push([label, v == null ? '' : String(v)]);
+  // 財務諸表項目の英語キー → 日本語ラベル（表示順）
+  var FINANCIAL_LABELS = [
+    ['fiscal_year', '対象年'],
+    ['revenue', '売上高'],
+    ['operating_income', '営業利益'],
+    ['ordinary_income', '経常利益'],
+    ['profit_before_tax', '税引前利益'],
+    ['net_income', '当期純利益'],
+    ['comprehensive_income', '包括利益'],
+    ['total_assets', '総資産'],
+    ['net_assets', '純資産'],
+    ['cash', '現金及び現金同等物'],
+    ['cf_operating', '営業活動によるキャッシュ・フロー'],
+    ['cf_investing', '投資活動によるキャッシュ・フロー'],
+    ['cf_financing', '財務活動によるキャッシュ・フロー'],
+    ['eps', '1株当たり当期純利益（円）'],
+    ['diluted_eps', '1株当たり当期純利益（希薄化後）（円）'],
+    ['bps', '1株当たり純資産（円）'],
+    ['dividend_per_share', '1株当たり配当（円）'],
+    ['payout_ratio', '配当性向'],
+    ['roe_official', 'ROE（自己資本利益率）'],
+    ['equity_ratio_official', '自己資本比率'],
+    ['per', 'PER（株価収益率）'],
+    ['accounting_standard', '会計基準']
+  ];
+  function buildCompanyDetailCsv(data) {
+    var d = data.data || data;
+    var fin = d.latest_financials || {};
+    var fiscalYear = fin.fiscal_year || d.latest_fiscal_year || '';
+    var rows = [];
+    rows.push(['対象年', fiscalYear ? fiscalYear + '年' : '']);
+    rows.push(['企業名', d.name || '']);
+    rows.push(['EDINETコード', d.edinet_code || '']);
+    rows.push(['証券コード', d.sec_code || d.securities_code || '']);
+    rows.push(['業種', d.industry || '']);
+    rows.push(['データ対象年数', d.data_years || '']);
+    rows.push(['', '']);
+    rows.push(['【財務諸表】', '']);
+    FINANCIAL_LABELS.forEach(function(pair) {
+      var key = pair[0], label = pair[1];
+      if (key === 'fiscal_year') return;
+      var v = fin[key];
+      if (v === undefined || v === null) return;
+      if (typeof v === 'number' && (key === 'revenue' || key === 'operating_income' || key === 'net_income' || key === 'total_assets' || key === 'net_assets' || key === 'cash' || key === 'cf_operating' || key === 'cf_investing' || key === 'cf_financing' || key === 'comprehensive_income' || key === 'ordinary_income' || key === 'profit_before_tax')) {
+        v = String(v);
       }
-    }
-    return rows;
+      rows.push([label, v]);
+    });
+    return '項目,値\n' + rows.map(function(r) { return '"' + String(r[0]).replace(/"/g,'""') + '","' + String(r[1]).replace(/"/g,'""') + '"'; }).join('\n');
   }
   el('btn-csv-detail').addEventListener('click', function() {
     if (!lastDetailData) return;
-    const rows = objectToCsvRows(lastDetailData);
-    const csv = '項目,値\n' + rows.map(r => '"' + String(r[0]).replace(/"/g,'""') + '","' + String(r[1]).replace(/"/g,'""') + '"').join('\n');
-    const code = (lastDetailData.edinet_code || lastDetailData.code || 'company').replace(/[^A-Za-z0-9_-]/g, '_');
-    downloadCsv('company_' + code + '.csv', csv);
+    var csv = buildCompanyDetailCsv(lastDetailData);
+    var d = lastDetailData.data || lastDetailData;
+    var code = (d.edinet_code || d.code || lastDetailData.edinet_code || 'company').replace(/[^A-Za-z0-9_-]/g, '_');
+    var fiscalYear = (d.latest_financials && d.latest_financials.fiscal_year) || d.latest_fiscal_year || '';
+    var fname = 'company_' + code + (fiscalYear ? '_' + fiscalYear + '年' : '') + '.csv';
+    downloadCsv(fname, csv);
   });
 
   // 2. 財務指標の分析
@@ -321,21 +358,44 @@
       const data = await get(path);
       lastAnalysisData = data;
       const c = data.company || {};
+      const period = data.latest_period || {};
       const ind = data.indicators || {};
       const rat = data.ratings || {};
       const perf = data.performance || {};
+      const bal = data.balance || {};
+      const cf = data.cash_flow || {};
+      function numFmt(v) { return v != null ? Number(v).toLocaleString() : '-'; }
+      function pctFmt(v) { return v != null ? v + '%' : '-'; }
       let table = '<table><tr><th>項目</th><th>値</th></tr>';
+      table += '<tr><td><strong>対象年</strong></td><td>' + escapeHtml(period.fiscal_year ? period.fiscal_year + '年' : (period.fiscal_period || '-')) + '</td></tr>';
       table += '<tr><td>企業名</td><td>' + escapeHtml(c.name) + '</td></tr>';
       table += '<tr><td>業種</td><td>' + escapeHtml(c.industry) + '</td></tr>';
-      table += '<tr><td>ROE</td><td>' + (ind.roe != null ? ind.roe + '%' : '-') + '</td></tr>';
-      table += '<tr><td>ROA</td><td>' + (ind.roa != null ? ind.roa + '%' : '-') + '</td></tr>';
-      table += '<tr><td>自己資本比率</td><td>' + (ind.equity_ratio != null ? ind.equity_ratio + '%' : '-') + '</td></tr>';
-      table += '<tr><td>営業利益率</td><td>' + (ind.operating_margin != null ? ind.operating_margin + '%' : '-') + '</td></tr>';
-      table += '<tr><td>収益性評価</td><td>' + escapeHtml(rat.profitability) + '</td></tr>';
-      table += '<tr><td>効率性評価</td><td>' + escapeHtml(rat.efficiency) + '</td></tr>';
-      table += '<tr><td>安全性評価</td><td>' + escapeHtml(rat.stability) + '</td></tr>';
-      if (perf.net_sales != null) table += '<tr><td>売上高</td><td>' + Number(perf.net_sales).toLocaleString() + '</td></tr>';
-      if (perf.net_income != null) table += '<tr><td>当期純利益</td><td>' + Number(perf.net_income).toLocaleString() + '</td></tr>';
+      table += '<tr><td colspan="2" style="background:#f0f0f0;"><strong>【損益】</strong></td></tr>';
+      if (perf.net_sales != null || perf.revenue != null) table += '<tr><td>売上高</td><td>' + numFmt(perf.net_sales || perf.revenue) + '</td></tr>';
+      if (perf.operating_income != null) table += '<tr><td>営業利益</td><td>' + numFmt(perf.operating_income) + '</td></tr>';
+      if (perf.ordinary_income != null) table += '<tr><td>経常利益</td><td>' + numFmt(perf.ordinary_income) + '</td></tr>';
+      if (perf.net_income != null) table += '<tr><td>当期純利益</td><td>' + numFmt(perf.net_income) + '</td></tr>';
+      table += '<tr><td colspan="2" style="background:#f0f0f0;"><strong>【貸借】</strong></td></tr>';
+      if (bal.total_assets != null) table += '<tr><td>総資産</td><td>' + numFmt(bal.total_assets) + '</td></tr>';
+      if (bal.net_assets != null) table += '<tr><td>純資産</td><td>' + numFmt(bal.net_assets) + '</td></tr>';
+      if (bal.cash != null) table += '<tr><td>現金及び現金同等物</td><td>' + numFmt(bal.cash) + '</td></tr>';
+      table += '<tr><td colspan="2" style="background:#f0f0f0;"><strong>【キャッシュフロー】</strong></td></tr>';
+      if (cf.cf_operating != null) table += '<tr><td>営業CF</td><td>' + numFmt(cf.cf_operating) + '</td></tr>';
+      if (cf.cf_investing != null) table += '<tr><td>投資CF</td><td>' + numFmt(cf.cf_investing) + '</td></tr>';
+      if (cf.cf_financing != null) table += '<tr><td>財務CF</td><td>' + numFmt(cf.cf_financing) + '</td></tr>';
+      table += '<tr><td colspan="2" style="background:#f0f0f0;"><strong>【指標】</strong></td></tr>';
+      table += '<tr><td>ROE</td><td>' + pctFmt(ind.roe) + '</td></tr>';
+      table += '<tr><td>ROA</td><td>' + pctFmt(ind.roa) + '</td></tr>';
+      table += '<tr><td>自己資本比率</td><td>' + pctFmt(ind.equity_ratio) + '</td></tr>';
+      table += '<tr><td>営業利益率</td><td>' + pctFmt(ind.operating_margin) + '</td></tr>';
+      if (ind.eps != null) table += '<tr><td>EPS（円）</td><td>' + ind.eps + '</td></tr>';
+      if (ind.bps != null) table += '<tr><td>BPS（円）</td><td>' + ind.bps + '</td></tr>';
+      if (ind.per != null) table += '<tr><td>PER</td><td>' + ind.per + '</td></tr>';
+      if (ind.payout_ratio != null) table += '<tr><td>配当性向</td><td>' + ind.payout_ratio + '</td></tr>';
+      table += '<tr><td colspan="2" style="background:#f0f0f0;"><strong>【評価】</strong></td></tr>';
+      table += '<tr><td>収益性</td><td>' + escapeHtml(rat.profitability) + '</td></tr>';
+      table += '<tr><td>効率性</td><td>' + escapeHtml(rat.efficiency) + '</td></tr>';
+      table += '<tr><td>安全性</td><td>' + escapeHtml(rat.stability) + '</td></tr>';
       table += '</table>';
       out.innerHTML = table;
       showCsvBtn('btn-csv-analysis', true);
@@ -349,7 +409,9 @@
     const table = el('out-analysis').querySelector('table');
     if (!table) return;
     const code = (el('analysis-code').value.trim().toUpperCase().replace(/^E?/,'E') || 'company').replace(/[^A-Za-z0-9_-]/g, '_');
-    downloadCsv('company_analysis_' + code + '.csv', tableToCsv(table));
+    const fiscalYear = (lastAnalysisData && lastAnalysisData.latest_period && lastAnalysisData.latest_period.fiscal_year) ? lastAnalysisData.latest_period.fiscal_year + '年' : '';
+    const fname = 'company_analysis_' + code + (fiscalYear ? '_' + fiscalYear : '') + '.csv';
+    downloadCsv(fname, tableToCsv(table));
   });
 
   // 3. ランキング
