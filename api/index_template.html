@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EDINET DB 財務分析</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif;
+      line-height: 1.5;
+      margin: 0;
+      color: #1a1a1a;
+      background: #f0f2f5;
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 1rem 1.5rem; }
+    h1 { font-size: 1.5rem; color: #0d47a1; margin: 0 0 1rem 0; }
+    nav { margin-bottom: 1.5rem; }
+    nav a {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      margin-right: 0.25rem;
+      background: #fff;
+      color: #333;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    }
+    nav a:hover, nav a.active { background: #0d47a1; color: #fff; }
+    .panel {
+      display: none;
+      background: #fff;
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .panel.active { display: block; }
+    .panel h2 { font-size: 1.1rem; margin: 0 0 1rem 0; color: #333; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+    .form-row { margin-bottom: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    .form-row label { min-width: 6em; }
+    .form-row input, .form-row select { padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; }
+    button {
+      padding: 0.5rem 1rem;
+      background: #0d47a1;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    button:hover { background: #1565c0; }
+    button.secondary { background: #607d8b; }
+    button.secondary:hover { background: #78909c; }
+    .out { margin-top: 1rem; min-height: 2rem; }
+    .out pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; white-space: pre-wrap; }
+    .out table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .out th, .out td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; }
+    .out th { background: #e3f2fd; }
+    .out .error { color: #c62828; }
+    .out .empty { color: #666; font-style: italic; }
+    .btn-csv { margin-left: 0.5rem; }
+    .comparison-table th { vertical-align: top; }
+    .comparison-table td { vertical-align: top; }
+    textarea { width: 100%; max-width: 400px; min-height: 60px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>EDINET DB 財務分析</h1>
+    <nav>
+      <a href="#search" data-panel="search" class="active">企業検索・基本情報</a>
+      <a href="#analysis" data-panel="analysis">財務指標の分析</a>
+      <a href="#ranking" data-panel="ranking">ランキング</a>
+      <a href="#compare" data-panel="compare">複数企業の比較</a>
+      <a href="#export" data-panel="export">CSVエクスポート</a>
+    </nav>
+
+    <!-- 1. 企業検索・基本情報取得 -->
+    <div id="panel-search" class="panel active">
+      <h2>企業検索・基本情報取得</h2>
+      <div class="form-row">
+        <label>企業名</label>
+        <input type="text" id="search-query" placeholder="例: 任天堂" />
+        <label>件数</label>
+        <select id="search-per-page"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select>
+        <button type="button" id="btn-search">検索</button>
+      </div>
+      <div id="out-search" class="out">
+        <span class="empty">企業名を入力して検索してください。</span>
+      </div>
+      <div class="form-row" style="margin-top:1rem;">
+        <label>企業コードで詳細</label>
+        <input type="text" id="detail-code" placeholder="例: E02367" />
+        <button type="button" id="btn-detail">詳細表示</button>
+      </div>
+      <div id="out-detail" class="out"></div>
+      <button type="button" id="btn-csv-search" class="btn-csv secondary" style="display:none;">検索結果をCSV保存</button>
+    </div>
+
+    <!-- 2. 財務指標の分析 -->
+    <div id="panel-analysis" class="panel">
+      <h2>財務指標の分析</h2>
+      <div class="form-row">
+        <label>企業コード</label>
+        <input type="text" id="analysis-code" placeholder="例: E02367" />
+        <button type="button" id="btn-analysis">分析表示</button>
+      </div>
+      <div id="out-analysis" class="out">
+        <span class="empty">企業コードを入力して分析を表示します。</span>
+      </div>
+      <button type="button" id="btn-csv-analysis" class="btn-csv secondary" style="display:none;">分析結果をCSV保存</button>
+    </div>
+
+    <!-- 3. ランキング -->
+    <div id="panel-ranking" class="panel">
+      <h2>ランキング機能</h2>
+      <div class="form-row">
+        <label>指標</label>
+        <select id="rank-metric">
+          <option value="roe">ROE（自己資本利益率）</option>
+          <option value="roa">ROA（総資産利益率）</option>
+          <option value="sales">売上高</option>
+          <option value="market_cap">時価総額</option>
+          <option value="operating_income">営業利益</option>
+        </select>
+        <label>件数</label>
+        <select id="rank-limit"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select>
+        <label>並び順</label>
+        <select id="rank-order"><option value="desc">降順</option><option value="asc">昇順</option></select>
+        <button type="button" id="btn-ranking">取得</button>
+      </div>
+      <div id="out-ranking" class="out">
+        <span class="empty">指標を選んで取得してください。</span>
+      </div>
+      <button type="button" id="btn-csv-ranking" class="btn-csv secondary" style="display:none;">ランキングをCSV保存</button>
+    </div>
+
+    <!-- 4. 複数企業の比較 -->
+    <div id="panel-compare" class="panel">
+      <h2>複数企業の比較</h2>
+      <div class="form-row">
+        <label>企業コード</label>
+        <textarea id="compare-codes" placeholder="カンマ区切りで2〜10件（例: E02367, E01825, E02503）"></textarea>
+      </div>
+      <div class="form-row">
+        <button type="button" id="btn-compare">比較する</button>
+      </div>
+      <div id="out-compare" class="out">
+        <span class="empty">企業コードをカンマ区切りで入力してください。</span>
+      </div>
+      <button type="button" id="btn-csv-compare" class="btn-csv secondary" style="display:none;">比較結果をCSV保存</button>
+    </div>
+
+    <!-- 5. CSVエクスポート説明 -->
+    <div id="panel-export" class="panel">
+      <h2>CSVエクスポート</h2>
+      <p>各機能の結果表示エリアの下にある「CSV保存」ボタンで、表示中の結果をCSVファイルとして保存できます。</p>
+      <ul>
+        <li>企業検索 → 検索結果をCSV保存</li>
+        <li>財務指標の分析 → 分析結果をCSV保存</li>
+        <li>ランキング → ランキングをCSV保存</li>
+        <li>複数企業の比較 → 比較結果をCSV保存</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+(function() {
+  const API = ''; // same origin
+
+  function el(id) { return document.getElementById(id); }
+  function out(id, html, isTable) {
+    const o = el(id);
+    if (!o) return;
+    o.innerHTML = html;
+    o.querySelectorAll('table').forEach(t => t.style.display = 'table');
+  }
+  function showCsvBtn(btnId, show) { const b = el(btnId); if (b) b.style.display = show ? 'inline-block' : 'none'; }
+
+  async function get(path) {
+    const r = await fetch(API + path);
+    if (!r.ok) throw new Error(r.status + ' ' + (await r.text()));
+    return r.json();
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function tableToCsv(tableEl) {
+    const rows = tableEl.querySelectorAll('tr');
+    const lines = [];
+    for (const tr of rows) {
+      const cells = tr.querySelectorAll('th, td');
+      lines.push(Array.from(cells).map(c => '"' + c.textContent.trim().replace(/"/g,'""') + '"').join(','));
+    }
+    return lines.join('\n');
+  }
+  function downloadCsv(filename, csv) {
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // Tabs
+  document.querySelectorAll('nav a[data-panel]').forEach(a => {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      const id = this.getAttribute('data-panel');
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('nav a').forEach(x => x.classList.remove('active'));
+      el('panel-' + id).classList.add('active');
+      this.classList.add('active');
+    });
+  });
+
+  // 1. 企業検索
+  let lastSearchData = null;
+  el('btn-search').addEventListener('click', async function() {
+    const q = el('search-query').value.trim();
+    const per = el('search-per-page').value;
+    const out = el('out-search');
+    out.innerHTML = '<span>検索中...</span>';
+    try {
+      const path = '/companies?per_page=' + encodeURIComponent(per) + '&page=1' + (q ? '&query=' + encodeURIComponent(q) : '');
+      const data = await get(path);
+      lastSearchData = data;
+      const list = data.companies || [];
+      if (list.length === 0) {
+        out.innerHTML = '<span class="empty">該当する企業がありません。</span>';
+        showCsvBtn('btn-csv-search', false);
+        return;
+      }
+      let table = '<table><thead><tr><th>EDINETコード</th><th>企業名</th><th>証券コード</th><th>業種</th></tr></thead><tbody>';
+      list.forEach(c => {
+        table += '<tr><td>' + escapeHtml(c.edinet_code || c.code) + '</td><td>' + escapeHtml(c.name) + '</td><td>' + escapeHtml(c.securities_code) + '</td><td>' + escapeHtml(c.industry) + '</td></tr>';
+      });
+      table += '</tbody></table>';
+      out.innerHTML = table;
+      showCsvBtn('btn-csv-search', true);
+    } catch (e) {
+      out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>';
+      showCsvBtn('btn-csv-search', false);
+    }
+  });
+
+  el('btn-detail').addEventListener('click', async function() {
+    const code = el('detail-code').value.trim().toUpperCase().replace(/^E?/,'E');
+    if (!code) return;
+    const out = el('out-detail');
+    out.innerHTML = '<span>取得中...</span>';
+    try {
+      const data = await get('/companies/' + encodeURIComponent(code));
+      out.innerHTML = '<pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
+    } catch (e) {
+      out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>';
+    }
+  });
+
+  el('btn-csv-search').addEventListener('click', function() {
+    const table = el('out-search').querySelector('table');
+    if (!table) return;
+    downloadCsv('companies_search.csv', tableToCsv(table));
+  });
+
+  // 2. 財務指標の分析
+  let lastAnalysisData = null;
+  el('btn-analysis').addEventListener('click', async function() {
+    const code = el('analysis-code').value.trim().toUpperCase().replace(/^E?/,'E');
+    if (!code) return;
+    const out = el('out-analysis');
+    out.innerHTML = '<span>取得中...</span>';
+    try {
+      const data = await get('/companies/' + encodeURIComponent(code) + '/analysis');
+      lastAnalysisData = data;
+      const c = data.company || {};
+      const ind = data.indicators || {};
+      const rat = data.ratings || {};
+      const perf = data.performance || {};
+      let table = '<table><tr><th>項目</th><th>値</th></tr>';
+      table += '<tr><td>企業名</td><td>' + escapeHtml(c.name) + '</td></tr>';
+      table += '<tr><td>業種</td><td>' + escapeHtml(c.industry) + '</td></tr>';
+      table += '<tr><td>ROE</td><td>' + (ind.roe != null ? ind.roe + '%' : '-') + '</td></tr>';
+      table += '<tr><td>ROA</td><td>' + (ind.roa != null ? ind.roa + '%' : '-') + '</td></tr>';
+      table += '<tr><td>自己資本比率</td><td>' + (ind.equity_ratio != null ? ind.equity_ratio + '%' : '-') + '</td></tr>';
+      table += '<tr><td>営業利益率</td><td>' + (ind.operating_margin != null ? ind.operating_margin + '%' : '-') + '</td></tr>';
+      table += '<tr><td>収益性評価</td><td>' + escapeHtml(rat.profitability) + '</td></tr>';
+      table += '<tr><td>効率性評価</td><td>' + escapeHtml(rat.efficiency) + '</td></tr>';
+      table += '<tr><td>安全性評価</td><td>' + escapeHtml(rat.stability) + '</td></tr>';
+      if (perf.net_sales != null) table += '<tr><td>売上高</td><td>' + Number(perf.net_sales).toLocaleString() + '</td></tr>';
+      if (perf.net_income != null) table += '<tr><td>当期純利益</td><td>' + Number(perf.net_income).toLocaleString() + '</td></tr>';
+      table += '</table>';
+      out.innerHTML = table;
+      showCsvBtn('btn-csv-analysis', true);
+    } catch (e) {
+      out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>';
+      showCsvBtn('btn-csv-analysis', false);
+    }
+  });
+
+  el('btn-csv-analysis').addEventListener('click', function() {
+    const table = el('out-analysis').querySelector('table');
+    if (!table) return;
+    downloadCsv('analysis.csv', tableToCsv(table));
+  });
+
+  // 3. ランキング
+  let lastRankingData = null;
+  el('btn-ranking').addEventListener('click', async function() {
+    const metric = el('rank-metric').value;
+    const limit = el('rank-limit').value;
+    const order = el('rank-order').value;
+    const out = el('out-ranking');
+    out.innerHTML = '<span>取得中...</span>';
+    try {
+      const data = await get('/rankings/' + encodeURIComponent(metric) + '?limit=' + limit + '&order=' + order);
+      lastRankingData = data;
+      const list = data.rankings || data.data || [];
+      if (list.length === 0) {
+        out.innerHTML = '<span class="empty">データがありません。</span>';
+        showCsvBtn('btn-csv-ranking', false);
+        return;
+      }
+      const keys = Object.keys(list[0]);
+      let table = '<table><thead><tr>';
+      keys.forEach(k => table += '<th>' + escapeHtml(k) + '</th>');
+      table += '</tr></thead><tbody>';
+      list.forEach(row => {
+        table += '<tr>';
+        keys.forEach(k => table += '<td>' + escapeHtml(row[k] != null ? row[k] : '') + '</td>');
+        table += '</tr>';
+      });
+      table += '</tbody></table>';
+      out.innerHTML = table;
+      showCsvBtn('btn-csv-ranking', true);
+    } catch (e) {
+      out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>';
+      showCsvBtn('btn-csv-ranking', false);
+    }
+  });
+
+  el('btn-csv-ranking').addEventListener('click', function() {
+    const table = el('out-ranking').querySelector('table');
+    if (!table) return;
+    downloadCsv('ranking.csv', tableToCsv(table));
+  });
+
+  // 4. 複数企業比較
+  let lastCompareData = null;
+  el('btn-compare').addEventListener('click', async function() {
+    const raw = el('compare-codes').value.trim();
+    const codes = raw.split(/[\s,]+/).map(s => s.trim().toUpperCase().replace(/^E?/,'E')).filter(Boolean);
+    if (codes.length < 2) {
+      el('out-compare').innerHTML = '<span class="error">企業コードを2件以上入力してください。</span>';
+      return;
+    }
+    if (codes.length > 10) {
+      el('out-compare').innerHTML = '<span class="error">一度に比較できるのは10件までです。</span>';
+      return;
+    }
+    const out = el('out-compare');
+    out.innerHTML = '<span>取得中...</span>';
+    try {
+      const data = await get('/compare?codes=' + codes.map(c => encodeURIComponent(c)).join(','));
+      lastCompareData = data;
+      const success = data.success || [];
+      const errors = data.errors || [];
+      if (success.length === 0) {
+        out.innerHTML = '<span class="error">取得できた企業がありません。</span><pre>' + escapeHtml(JSON.stringify(errors, null, 2)) + '</pre>';
+        showCsvBtn('btn-csv-compare', false);
+        return;
+      }
+      const indicators = ['roe','roa','equity_ratio','net_sales','net_income','total_assets'];
+      let table = '<table class="comparison-table"><thead><tr><th>項目</th>';
+      success.forEach(s => { table += '<th>' + escapeHtml(s.name || s.code) + '</th>'; });
+      table += '</tr></thead><tbody>';
+      const fin0 = (success[0].financials && success[0].financials.financials) ? success[0].financials.financials[0] : (success[0].financials && success[0].financials[0]) || success[0];
+      if (fin0 && typeof fin0 === 'object') {
+        Object.keys(fin0).forEach(key => {
+          if (['roe','roa','equity_ratio','operating_margin'].includes(key) && fin0[key] != null) {
+            table += '<tr><td>' + escapeHtml(key) + '</td>';
+            success.forEach(s => {
+              const f = (s.financials && s.financials.financials) ? s.financials.financials[0] : (s.financials && s.financials[0]);
+              table += '<td>' + (f && f[key] != null ? f[key] + (key.includes('ratio') || key === 'roe' || key === 'roa' || key === 'operating_margin' ? '%' : '') : '-') + '</td>';
+            });
+            table += '</tr>';
+          }
+          if (['net_sales','net_income','operating_income','total_assets','equity'].includes(key) && fin0[key] != null) {
+            table += '<tr><td>' + escapeHtml(key) + '</td>';
+            success.forEach(s => {
+              const f = (s.financials && s.financials.financials) ? s.financials.financials[0] : (s.financials && s.financials[0]);
+              const v = f && f[key] != null ? Number(f[key]).toLocaleString() : '-';
+              table += '<td>' + v + '</td>';
+            });
+            table += '</tr>';
+          }
+        });
+      }
+      if (success.length > 0 && !success[0].financials) {
+        success.forEach((s, i) => {
+          table += '<tr><td>企業' + (i+1) + '</td>';
+          table += '<td colspan="' + success.length + '"><pre>' + escapeHtml(JSON.stringify(s, null, 2)) + '</pre></td></tr>';
+        });
+      }
+      table += '</tbody></table>';
+      if (errors.length) table += '<p class="error">一部エラー: ' + escapeHtml(JSON.stringify(errors)) + '</p>';
+      out.innerHTML = table;
+      showCsvBtn('btn-csv-compare', true);
+    } catch (e) {
+      out.innerHTML = '<span class="error">エラー: ' + escapeHtml(e.message) + '</span>';
+      showCsvBtn('btn-csv-compare', false);
+    }
+  });
+
+  el('btn-csv-compare').addEventListener('click', function() {
+    const table = el('out-compare').querySelector('table');
+    if (!table) return;
+    downloadCsv('compare.csv', tableToCsv(table));
+  });
+})();
+  </script>
+</body>
+</html>

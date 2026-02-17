@@ -5,6 +5,7 @@ FastAPIを使用したREST API
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from typing import List, Optional, Dict, Any
 import requests
 import os
@@ -69,9 +70,24 @@ class EDINETClient:
 client = EDINETClient(API_KEY)
 
 
-@app.get("/")
+def _load_index_html() -> str:
+    """トップページ用HTMLを index_template.html から読み込む"""
+    from pathlib import Path
+    path = Path(__file__).parent / "index_template.html"
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return "<!DOCTYPE html><html><body><h1>EDINET DB 財務分析</h1><p>index_template.html を配置してください。</p></body></html>"
+
+
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    """APIルート"""
+    """トップページ（HTML）— 各機能の入力・出力画面"""
+    return _load_index_html()
+
+
+@app.get("/api-info")
+async def api_info():
+    """API情報（JSON）"""
     return {
         "message": "EDINET DB 財務分析 API",
         "version": "1.0.0",
